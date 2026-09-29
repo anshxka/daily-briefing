@@ -1,0 +1,62 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Daily briefing - {{DATE}}</title>
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🧭</text></svg>">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;600;700&family=Source+Serif+4:opsz,wght@8..60,500;8..60,600&display=swap" rel="stylesheet">
+<style>
+:root{--bg:#F6F7FB;--card:#fff;--ink:#1B2436;--muted:#5B6478;--line:#E3E6EE;--tip:#FFF4EA;--tipline:#EA580C;
+  --sans:"Manrope",system-ui,-apple-system,"Segoe UI",sans-serif;--serif:"Source Serif 4",Georgia,serif}
+@media (prefers-color-scheme:dark){:root{--bg:#10141D;--card:#171C28;--ink:#E7EAF2;--muted:#9AA3B8;--line:#262D3D;--tip:#2A1E14}}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--ink);font:16px/1.55 var(--sans)}
+.wrap{max-width:860px;margin:auto;padding:28px 20px 60px}
+header p{margin:0;color:var(--muted);font-size:14px}
+header h1{font:600 clamp(28px,5vw,40px)/1.15 var(--serif);margin:4px 0 18px}
+.big{list-style:none;padding:0;margin:0 0 18px}
+.big li{font:500 19px/1.45 var(--serif);padding:12px 0 12px 18px;border-left:3px solid var(--ink);margin-bottom:10px}
+.tip{background:var(--tip);border-left:4px solid var(--tipline);padding:14px 16px;border-radius:6px;margin-bottom:26px}
+.tip b{display:block;font-size:14px;margin-bottom:2px}
+nav{position:sticky;top:0;z-index:5;background:var(--bg);padding:10px 0;display:flex;gap:8px;overflow-x:auto;border-bottom:1px solid var(--line)}
+.chip{--c:var(--ink);flex:none;font:600 14px var(--sans);color:var(--ink);background:var(--card);border:1px solid var(--line);border-radius:999px;padding:7px 14px;cursor:pointer}
+.chip span{color:var(--muted);font-weight:400;margin-left:4px}
+.chip.on{background:var(--c);border-color:var(--c);color:#fff}.chip.on span{color:#ffffffcc}
+.chip:focus-visible,a:focus-visible{outline:2px solid var(--c,#2563EB);outline-offset:2px}
+.cat{margin-top:30px}
+.cat h2{font-size:15px;font-weight:700;color:var(--c);margin:0 0 10px;padding-left:10px;border-left:4px solid var(--c)}
+.story{background:var(--card);border:1px solid var(--line);border-radius:8px;padding:16px 18px;margin-bottom:12px}
+.story h3{font:600 19px/1.35 var(--serif);margin:0 0 6px}
+.story h3 a{color:var(--ink);text-decoration:none}.story h3 a:hover{text-decoration:underline}
+.story p{margin:4px 0;max-width:72ch}
+.why{color:var(--muted)}.why b{color:var(--ink);font-weight:600}
+.src{font-size:13px;color:var(--muted)}
+footer{margin-top:40px;font-size:13px;color:var(--muted)}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <p>{{DATE}}</p>
+    <h1>Today's big picture</h1>
+  </header>
+  <ul class="big">{{BIG_PICTURE}}</ul>
+  <div class="tip"><b>HR tip of the day</b>{{HR_TIP}}</div>
+  <nav>{{CHIPS}}</nav>
+  <main>{{SECTIONS}}</main>
+  <footer>Updated {{UPDATED}}. Past briefings are in the archive folder. Summaries are AI-generated; open the source before quoting.</footer>
+</div>
+<script>
+document.querySelectorAll('.chip').forEach(function(c){
+  c.addEventListener('click',function(){
+    document.querySelectorAll('.chip').forEach(function(x){x.classList.remove('on')});
+    c.classList.add('on');
+    var k=c.dataset.cat;
+    document.querySelectorAll('.cat').forEach(function(s){s.style.display=(k==='all'||s.dataset.cat===k)?'':'none'});
+  });
+});
+</script>
+</body>
+</html>

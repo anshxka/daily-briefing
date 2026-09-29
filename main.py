@@ -65,7 +65,7 @@ def fetch_articles():
 
 def call_gemini(prompt):
     """Free option: Google Gemini API (key from aistudio.google.com)."""
-    model = os.getenv("GEMINI_MODEL", "gemini-2.5-flash")
+    model = os.getenv("GEMINI_MODEL", "gemini-3.8-flash")
     r = requests.post(
         f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent",
         params={"key": os.environ["GEMINI_API_KEY"]},

@@ -67,7 +67,7 @@ def call_gemini(prompt):
     """Free option: Google Gemini API (key from aistudio.google.com).
     Retries when Google is busy, and falls back to Google's 'latest flash' model."""
     import time
-    models = [os.getenv("GEMINI_MODEL", "gemini-3.8-flash"), "gemini-flash-latest"]
+    models = [os.getenv("GEMINI_MODEL", "gemini-3.8-flash"), "gemini-flash-lite-latest", "gemini-flash-latest"]
     last_error = ""
     for model in models:
         for attempt in range(3):
@@ -82,7 +82,9 @@ def call_gemini(prompt):
                 return "".join(p.get("text", "") for p in r.json()["candidates"][0]["content"]["parts"])
             last_error = f"{model} error {r.status_code}: {r.text[:300]}"
             print(last_error)
-            if r.status_code in (429, 500, 502, 503, 504):
+            if r.status_code == 429:
+                break  # daily/minute quota used up: retrying won't help, try the next model
+            if r.status_code in (500, 502, 503, 504):
                 wait = 20 * (attempt + 1)
                 print(f"Gemini busy - waiting {wait}s and retrying...")
                 time.sleep(wait)

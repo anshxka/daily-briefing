@@ -70,7 +70,7 @@ def call_gemini(prompt):
     models = [os.getenv("GEMINI_MODEL", "gemini-3.8-flash"), "gemini-flash-latest"]
     last_error = ""
     for model in models:
-        for attempt in range(5):
+        for attempt in range(3):
             r = requests.post(
                 f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent",
                 params={"key": os.environ["GEMINI_API_KEY"]},
@@ -83,12 +83,38 @@ def call_gemini(prompt):
             last_error = f"{model} error {r.status_code}: {r.text[:300]}"
             print(last_error)
             if r.status_code in (429, 500, 502, 503, 504):
-                wait = 30 * (attempt + 1)
+                wait = 20 * (attempt + 1)
                 print(f"Gemini busy - waiting {wait}s and retrying...")
                 time.sleep(wait)
                 continue
             break  # other errors (e.g. model not found): try the next model
-    raise SystemExit(f"Gemini failed after retries. Last error: {last_error}")
+    raise RuntimeError(f"Gemini failed after retries. Last error: {last_error}")
+
+
+def call_groq(prompt):
+    """Free backup: Groq API (key from console.groq.com, no card needed)."""
+    import time
+    models = [os.getenv("GROQ_MODEL", "llama-3.3-70b-versatile"), "openai/gpt-oss-120b"]
+    last_error = ""
+    for model in models:
+        for attempt in range(4):
+            r = requests.post(
+                "https://api.groq.com/openai/v1/chat/completions",
+                headers={"Authorization": f"Bearer {os.environ['GROQ_API_KEY']}"},
+                json={"model": model, "temperature": 0.3,
+                      "response_format": {"type": "json_object"},
+                      "messages": [{"role": "user", "content": prompt}]},
+                timeout=300,
+            )
+            if r.status_code == 200:
+                return r.json()["choices"][0]["message"]["content"]
+            last_error = f"groq {model} error {r.status_code}: {r.text[:300]}"
+            print(last_error)
+            if r.status_code in (429, 500, 502, 503, 504):
+                time.sleep(30 * (attempt + 1))
+                continue
+            break
+    raise RuntimeError(last_error)
 
 
 def call_claude(prompt):
@@ -110,8 +136,19 @@ ARTICLES_PER_CATEGORY = 4   # full articles per category (keeps the read to ~15 
 
 
 def ask_ai(prompt):
-    text = call_gemini(prompt) if os.getenv("GEMINI_API_KEY") else call_claude(prompt)
-    return json.loads(text[text.find("{"): text.rfind("}") + 1])
+    """Try each AI you have a key for, in order: Gemini, Groq, Claude."""
+    providers = [("GEMINI_API_KEY", call_gemini), ("GROQ_API_KEY", call_groq), ("ANTHROPIC_API_KEY", call_claude)]
+    errors = []
+    for env, fn in providers:
+        if not os.getenv(env):
+            continue
+        try:
+            text = fn(prompt)
+            return json.loads(text[text.find("{"): text.rfind("}") + 1])
+        except Exception as e:
+            print(f"{fn.__name__} failed, trying next provider: {e}")
+            errors.append(str(e))
+    raise SystemExit("All AI providers failed:\n" + "\n".join(errors))
 
 
 def fetch_full_text(url):
@@ -119,14 +156,14 @@ def fetch_full_text(url):
     try:
         downloaded = trafilatura.fetch_url(url)
         text = trafilatura.extract(downloaded) if downloaded else ""
-        return (text or "")[:5000]
+        return (text or "")[:2500]
     except Exception:
         return ""
 
 
 def ask_claude(articles):
     cats = "\n".join(f'- "{k}": {name} - {brief}' for k, (name, brief, _) in CATEGORIES.items())
-    items = "\n".join(f'[{a["id"]}] {a["title"]} ({a["source"]}) :: {a["snippet"]}' for a in articles)
+    items = "\n".join(f'[{a["id"]}] {a["title"]} ({a["source"]})' for a in articles[:110])
 
     # Pass 1: choose and categorize
     picked = ask_ai(f"""You are the editor of a daily briefing for an HR and business professional who wants
@@ -156,12 +193,18 @@ Reply with ONLY valid JSON: {{"stories": [{{"id": 0, "category": "future_of_ai"}
         a["full_text"] = fetch_full_text(a["link"])
         print(f"read {len(a['full_text'])} chars: {a['title'][:60]}")
 
-    sources = "\n\n".join(
-        f'[{a["id"]}] {a["title"]} ({a["source"]})\n{a["full_text"] or a["snippet"]}' for a in chosen)
-
-    # Pass 2: write the articles
-    written = ask_ai(f"""You write a daily news briefing for an HR and business professional. For each story below,
-write a short news article in your own words that she can read instead of the original.
+    # Pass 2: write the articles, one category at a time (keeps each request small for free tiers)
+    import time
+    texts = {}
+    for cat_key, (cat_name, _, _) in CATEGORIES.items():
+        batch = [a for a in chosen if a["category"] == cat_key]
+        if not batch:
+            continue
+        sources = "\n\n".join(
+            f'[{a["id"]}] {a["title"]} ({a["source"]})\n{a["full_text"] or a["snippet"]}' for a in batch)
+        try:
+            result = ask_ai(f"""You write a daily news briefing for an HR and business professional. For each story below
+(section: {cat_name}), write a short news article in your own words that she can read instead of the original.
 
 Rules for each article:
 - A clear, factual headline.
@@ -171,18 +214,29 @@ Rules for each article:
 - Use only facts from the source text. If a source is only a short snippet, write a shorter article
   (1-2 paragraphs) and do not make up details, quotes or numbers.
 
-Also write:
-- "big_picture": 3 sentences connecting today's news into trends.
-- "hr_tip": one concrete thing an HR professional could do or learn this week, based on today's news.
-
 Stories:
 {sources}
 
 Reply with ONLY valid JSON:
-{{"big_picture": ["...", "...", "..."], "hr_tip": "...",
-  "stories": [{{"id": 0, "headline": "...", "article": "para 1\\n\\npara 2\\n\\npara 3", "why": "..."}}]}}""")
+{{"stories": [{{"id": 0, "headline": "...", "article": "para 1\\n\\npara 2\\n\\npara 3", "why": "..."}}]}}""")
+            for st in result.get("stories", []):
+                texts[st.get("id")] = st
+            print(f"wrote {cat_name}")
+        except SystemExit as e:
+            print(f"skipped {cat_name}: {e}")
+        time.sleep(15)  # stay under free-tier per-minute limits
 
-    texts = {s.get("id"): s for s in written.get("stories", [])}
+    headlines = "\n".join(f'- {texts[a["id"]].get("headline", a["title"])}' for a in chosen if a["id"] in texts)
+    if not headlines:
+        raise SystemExit("No articles could be written today - see errors above")
+    written = ask_ai(f"""Today's news headlines for an HR and business professional:
+{headlines}
+
+Write:
+- "big_picture": 3 sentences connecting today's news into trends.
+- "hr_tip": one concrete thing an HR professional could do or learn this week, based on today's news.
+Reply with ONLY valid JSON: {{"big_picture": ["...", "...", "..."], "hr_tip": "..."}}""")
+
     grouped = {k: [] for k in CATEGORIES}
     for a in chosen:
         w = texts.get(a["id"])
